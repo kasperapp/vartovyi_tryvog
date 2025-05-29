@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Вартовий Головне</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.0/socket.io.js"></script>
+    <style>
+        body {
+		
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #000000;
+            color: #000000;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .container {
+            width: 100%;
+            max-width: 1200px;
+            background-color: #32373b;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        h1 {
+            color: #ff0000;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-bottom: 20px;
+            flex-wrap: wrap; /* Дозволяє кнопкам переноситися на новий рядок */
+        }
+        .control-button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s ease;
+            background-color: #e9ecef; /* Світліший фон для неактивних кнопок */
+            color: #000000;
+        }
+        .control-button.active {
+            background-color: #007bff;
+            color: white;
+        }
+        .control-button:not(.active):hover {
+            background-color: #d6e0e9;
+        }
+
+        /* Стилі для секції шаблонів */
+        .templates-section {
+            margin-top: 20px;
+            padding: 15px;
+            border: 1px dashed #ced4da;
+            border-radius: 8px;
+            background-color: #7d7fff;
+            text-align: center;
+        }
+        .template-button {
+            padding: 8px 15px;
+            margin: 5px;
+            border: 1px solid #007bff;
+            border-radius: 5px;
+            background-color: #e7f3ff;
+            color: #007bff;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+        .template-button:hover {
+            background-color: #007bff;
+            color: white;
+        }
+
+
+        #alarm-timer {
+            font-size: 2.2em; /* Збільшений розмір шрифту */
+            font-weight: bold;
+            color: #dc3545; /* Red color */
+            text-align: center;
+            margin-top: 10px;
+            margin-bottom: 20px;
+            display: none; /* Приховано за замовчуванням */
+            background-color: #fff3f4; /* Світло-червоний фон */
+            padding: 10px;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(220, 53, 69, 0.2);
+        }
+        #alarm-timer.active {
+            display: block;
+            animation: pulse 1s infinite alternate; /* Анімація для активної тривоги */
+        }
+
+        @keyframes pulse {
+            from { transform: scale(1); opacity: 1; }
+            to { transform: scale(1.03); opacity: 0.9; } /* Зменшив амплітуду пульсації */
+        }
+
+        .message-stream {
+            border-top: 1px solid #eee;
+            padding-top: 10px;
+        }
+        .message-card {
+            background-color: #f9f9f9;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            padding: 15px;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            transition: transform 0.2s ease-in-out;
+            word-wrap: break-word;
+            position: relative;
+        }
+        .message-card:hover {
+            transform: translateY(-3px);
+        }
+        .message-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            font-size: 0.9em;
+            color: #666;
+        }
+        .channel-info {
+            font-weight: bold;
+            color: #0056b3;
+        }
+        .priority {
+            background-color: #ffe0e0;
+            border-color: #ff0019;
+        }
+        .priority .channel-info {
+            color: #eb172c;
+        }
+        .message-text {
+            font-size: 1.1em;
+            line-height: 1.6;
+            white-space: pre-wrap;
+        }
+        .timestamp {
+            font-size: 0.8em;
+            color: #999;
+        }
+        .hidden {
+            display: none;
+        }
+        .notification-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(255, 0, 0, 0.3);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 3em;
+            color: white;
+            font-weight: bold;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            z-index: 1000;
+            animation: flashRed 1s infinite alternate;
+            display: none;
+        }
+
+        @keyframes flashRed {
+            from { background-color: rgba(255, 0, 0, 0.3); }
+            to { background-color: rgba(255, 0, 0, 0.7); }
+        }
+
+        /* Стилі для "Хто перший?" */
+        .first-to-report {
+            font-size: 0.85em; /* Трохи збільшено */
+            color: #008000;
+            font-weight: bold;
+            margin-top: 8px; /* Збільшено відступ */
+            padding-top: 8px; /* Збільшено відступ */
+            border-top: 1px dashed #ffffff;
+            text-align: right; /* Вирівнювання по правому краю */
+        }
+        .first-to-report.not-first {
+            color: #ff9900;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Вартовий Головне</h1>
+
+        <div class="controls">
+            <button id="show-all-btn" class="control-button active">Всі повідомлення</button>
+            <button id="show-priority-btn" class="control-button">Пріоритетні</button>
+        </div>
+
+        <div id="alarm-timer"></div>
+        
+        <div class="templates-section">
+            <h3>Шаблони для тривог:</h3>
+            <button class="template-button" data-template="Тривога! Залишайтеся в укриттях.">Тривога!</button>
+            <button class="template-button" data-template="Ракети у напрямку! Негайно в укриття!">Ракети!</button>
+            <button class="template-button" data-template="Шахеди в області! Будьте обережні.">Шахед!</button>
+            <button class="template-button" data-template="Відбій повітряної тривоги.">Відбій!</button>
+            <button class="template-button" data-template="Деталі уточнюються, зберігайте спокій.">Уточнити</button>
+            <p style="font-size: 0.85em; color: #6c757d; margin-top: 10px;">
+                Натисніть на шаблон, щоб скопіювати текст.
+			</p>
+			<p style="font-size: 0.85em; color: #cec2cd; margin-top: 10px;">
+				стрічка оновлюється в реальному часі
+			</p>
+        </div>
+
+        <div id="message-stream" class="message-stream">
+        </div>
+    </div>
+
+    <div id="notification-overlay" class="notification-overlay">
+        УВАГА! ПРІОРИТЕТНА НОВИНА!
+    </div>
+
+    <audio id="alarm-sound" src="https://www.soundjay.com/buttons/beep-07.mp3" preload="auto"></audio>
+
+    <script>
+        const socket = io();
+        const messageStream = document.getElementById('message-stream');
+        const showAllBtn = document.getElementById('show-all-btn');
+        const showPriorityBtn = document.getElementById('show-priority-btn');
+        const alarmTimerDisplay = document.getElementById('alarm-timer');
+        const notificationOverlay = document.getElementById('notification-overlay');
+        const alarmSound = document.getElementById('alarm-sound');
+        const templateButtons = document.querySelectorAll('.template-button');
+
+        let isPriorityFilterActive = false;
+        let alarmStartTime = null;
+        let alarmInterval = null;
+
+        // --- Функції для управління дашбордом ---
+
+        function formatTimestamp(isoString) {
+            const date = new Date(isoString);
+            const options = { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' };
+            return date.toLocaleString('uk-UA', options);
+        }
+
+        function createMessageCard(message) {
+            const card = document.createElement('div');
+            card.className = 'message-card';
+            if (message.is_priority) {
+                card.classList.add('priority');
+            }
+
+            const header = document.createElement('div');
+            header.className = 'message-header';
+
+            const channelInfo = document.createElement('span');
+            channelInfo.className = 'channel-info';
+            channelInfo.textContent = `Канал: ${message.channel_title}`;
+
+            const timestamp = document.createElement('span');
+            timestamp.className = 'timestamp';
+            timestamp.textContent = formatTimestamp(message.published_at);
+
+            header.appendChild(channelInfo);
+            header.appendChild(timestamp);
+
+            const text = document.createElement('div');
+            text.className = 'message-text';
+            text.textContent = message.message_text;
+
+            card.appendChild(header);
+            card.appendChild(text);
+
+            // Логіка для "Хто перший?"
+            if (message.first_reporter) {
+                const firstReporterDiv = document.createElement('div');
+                firstReporterDiv.className = 'first-to-report';
+                if (message.first_reporter.delay_seconds > 0) {
+                    firstReporterDiv.classList.add('not-first');
+                    firstReporterDiv.textContent = `Першим повідомив: ${message.first_reporter.channel_title} (${message.first_reporter.delay_seconds} сек. раніше)`;
+                } else {
+                    firstReporterDiv.textContent = `Ймовірно, перший з джерел: ${message.first_reporter.channel_title}`;
+                }
+                card.appendChild(firstReporterDiv);
+            }
+
+            return card;
+        }
+
+        function addMessageToStream(message, prepend = true) {
+            // Перевіряємо, чи повідомлення відповідає поточному фільтру
+            if (isPriorityFilterActive && !message.is_priority) {
+                return; // Не додаємо, якщо фільтр пріоритетних активний, а повідомлення не пріоритетне
+            }
+
+            const card = createMessageCard(message);
+            if (prepend) {
+                messageStream.prepend(card);
+            } else {
+                messageStream.appendChild(card);
+            }
+            // Обмежуємо кількість повідомлень у стрічці
+            while (messageStream.children.length > 200) {
+                messageStream.removeChild(messageStream.lastChild);
+            }
+        }
+
+        function clearMessageStream() {
+            messageStream.innerHTML = '';
+        }
+
+        async function loadInitialMessages(priorityOnly) {
+            clearMessageStream();
+            const response = await fetch(`/api/messages?priority=${priorityOnly}`);
+            const messages = await response.json();
+            messages.forEach(msg => addMessageToStream(msg, false)); // Додаємо в кінець, оскільки отримуємо в порядку DESC
+        }
+
+        // --- Управління фільтрами ---
+
+        showAllBtn.addEventListener('click', () => {
+            isPriorityFilterActive = false;
+            showAllBtn.classList.add('active');
+            showPriorityBtn.classList.remove('active');
+            loadInitialMessages(false);
+        });
+
+        showPriorityBtn.addEventListener('click', () => {
+            isPriorityFilterActive = true;
+            showPriorityBtn.classList.add('active');
+            showAllBtn.classList.remove('active');
+            loadInitialMessages(true);
+        });
+
+        // --- Лічильник тривалості тривоги ---
+
+        function startAlarmTimer(startTime = null) {
+            if (alarmInterval) clearInterval(alarmInterval);
+            alarmStartTime = startTime ? new Date(startTime) : new Date(); // Використовуємо наданий час або поточний
+            alarmTimerDisplay.classList.add('active');
+            alarmInterval = setInterval(updateAlarmTimer, 1000);
+            updateAlarmTimer(); // Одразу оновлюємо для першого відображення
+        }
+
+        function stopAlarmTimer() {
+            if (alarmInterval) clearInterval(alarmInterval);
+            alarmInterval = null;
+            alarmStartTime = null;
+            alarmTimerDisplay.classList.remove('active');
+            alarmTimerDisplay.textContent = '';
+        }
+
+        function updateAlarmTimer() {
+            if (!alarmStartTime) return;
+            const now = new Date();
+            const durationMs = now - alarmStartTime;
+            const hours = Math.floor(durationMs / (1000 * 60 * 60));
+            const minutes = Math.floor((durationMs % (1000 * 60 * 60)) / (1000 * 60));
+            const seconds = Math.floor((durationMs % (1000 * 60)) / 1000);
+
+            const formatTime = (unit) => unit.toString().padStart(2, '0');
+            alarmTimerDisplay.textContent = `Тривога триває: ${formatTime(hours)}:${formatTime(minutes)}:${formatTime(seconds)}`;
+        }
+
+        // --- Управління сповіщеннями ---
+
+        function showNotificationOverlay() {
+            notificationOverlay.style.display = 'flex';
+            alarmSound.play().catch(e => console.error("Помилка відтворення звуку:", e));
+            setTimeout(() => {
+                notificationOverlay.style.display = 'none';
+                alarmSound.pause();
+                alarmSound.currentTime = 0; // Скидаємо звук на початок для наступного відтворення
+            }, 5000); // Відображається 5 секунд
+        }
+
+        // --- Шаблони для тривог ---
+        templateButtons.forEach(button => {
+            button.addEventListener('click', async () => {
+                const templateText = button.dataset.template;
+                try {
+                    await navigator.clipboard.writeText(templateText);
+                    alert('Текст скопійовано до буферу обміну: ' + templateText);
+                } catch (err) {
+                    console.error('Не вдалося скопіювати текст: ', err);
+                    // Fallback для старих браузерів або якщо копіювання заборонено
+                    prompt('Скопіюйте вручну:', templateText);
+                }
+            });
+        });
+
+
+        // --- WebSocket обробники ---
+
+        socket.on('connect', () => {
+            console.log('Підключено до WebSocket!');
+        });
+
+        socket.on('initial_messages', (messages) => {
+            console.log('Отримано початкові повідомлення через WebSocket:', messages.length);
+            clearMessageStream();
+            messages.forEach(msg => addMessageToStream(msg, false)); // Додаємо в кінець
+        });
+
+        // Обробка стану тривоги при підключенні
+        socket.on('alarm_state', (state) => {
+            console.log('Отримано початковий стан тривоги:', state);
+            if (state.is_active && state.start_time) {
+                startAlarmTimer(state.start_time);
+            } else {
+                stopAlarmTimer();
+            }
+        });
+
+        socket.on('new_message', (message) => {
+            console.log('Отримано нове повідомлення через WebSocket:', message);
+            addMessageToStream(message); // Додаємо повідомлення з урахуванням фільтру
+            
+            // Логіка для запуску/зупинки таймера та сповіщень на основі нових повідомлень
+            if (message.is_priority) {
+                const lowerText = message.message_text.toLowerCase();
+                const keywords_for_alarm = ['тривога', 'повітряна'];
+                const keywords_for_all_clear = ['відбій', 'чисто', 'відбою'];
+
+                const is_alarm_message = keywords_for_alarm.some(kw => lowerText.includes(kw));
+                const is_all_clear_message = keywords_for_all_clear.some(kw => lowerText.includes(kw));
+                
+                if (is_alarm_message && !is_all_clear_message) {
+                    startAlarmTimer(message.published_at); // Використовуємо час публікації повідомлення
+                    showNotificationOverlay();
+                } else if (is_all_clear_message) {
+                    stopAlarmTimer();
+                }
+            }
+        });
+
+        socket.on('disconnect', () => {
+            console.log('Відключено від WebSocket. Спроба перепідключення...');
+        });
+
+        // Завантажуємо початкові повідомлення при завантаженні сторінки
+        document.addEventListener('DOMContentLoaded', () => {
+            loadInitialMessages(false);
+        });
+    </script>
+</body>
+</html>
